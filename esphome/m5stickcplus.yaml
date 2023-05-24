@@ -1,0 +1,189 @@
+# M5Stack Stick-C PLUS Config
+# Thx to: https://community.home-assistant.io/t/working-esphome-yaml-for-m5stickc
+#
+substitutions:
+  devicename: "m5stick-c"
+  friendly_name: "M5 Stick-C"
+
+esphome:
+  name: ${devicename}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: m5stick-c
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    key: !secret encryption_key
+
+ota:
+  password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: $devicename Fallback Hotspot
+    password: !secret wifi_password
+
+# Power Controller, needed for display, too afaik
+external_components:
+  - source: github://airy10/esphome-m5stickC
+    components: [ axp192 ]
+
+# LED
+light:
+  - platform: status_led
+    name: ${friendly_name} LED
+    restore_mode: ALWAYS_OFF
+    pin:
+      number: GPIO10
+      inverted: true
+
+# Built-in Serial Peripheral Interface (SPI)
+spi:
+  clk_pin: GPIO13
+  mosi_pin: GPIO15
+
+# i2c_external = Groove Port
+# i2c_internal = internal devices + HAT
+i2c:
+  - id: i2c_external
+    sda: GPIO32
+    scl: GPIO33
+    scan: true
+    #frequency: 50kHz
+  - id: i2c_internal
+    sda: GPIO21
+    scl: GPIO22
+    scan: true
+
+button:
+  - platform: restart
+    name: ${friendly_name} Restart
+    entity_category: diagnostic
+
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+font:
+  - file: "gfonts://Roboto"
+    id: roboto_14
+    size: 14
+  - file: "gfonts://Roboto"
+    id: roboto_32
+    size: 32
+  - file: "gfonts://Roboto"
+    id: roboto_54
+    size: 54
+
+display:
+  - platform: st7789v
+    model: TTGO TDisplay 135x240
+    cs_pin: GPIO5
+    dc_pin: GPIO23
+    reset_pin: GPIO18
+    rotation: 90
+    id: display1
+    #pages:
+    lambda: |-
+      it.print(0, 0, id(roboto_54), "Hello World!");
+
+# Buttons
+binary_sensor:
+  - platform: gpio
+    pin:
+      number: GPIO37
+      inverted: true
+    id: button_a
+  - platform: gpio
+    pin:
+      number: GPIO39
+      inverted: true
+    id: button_b
+
+# Built-in infrared transmitter. See https://esphome.io/components/remote_transmitter.html 
+#   and https://m5stack.hackster.io/alessandro-polselli/turn-m5stickc-into-universal-ir-remote-home-automation-d3ec0d
+remote_transmitter:
+  pin: GPIO9
+  carrier_duty_percent: 50%
+
+# I2C Microphone via SPM1423
+i2s_audio:
+  i2s_lrclk_pin: GPIO0  #WS Pin
+
+microphone:
+  - platform: i2s_audio
+    adc_type: external
+    id: i2s_microphone
+    i2s_din_pin: GPIO34    #Data pin
+    pdm: true
+
+voice_assistant:
+  microphone: i2s_microphone
+
+# Internal PWM Buzzer
+output:
+  - platform: ledc
+    pin: GPIO2
+    id: rtttl_out
+
+rtttl:
+  output: rtttl_out
+
+sensor:
+  # Built-in 6-axis intertial measurement unit (IMU) that also includes a temperature sensor
+  - platform: mpu6886
+    i2c_id: i2c_internal
+    address: 0x68
+    accel_x:
+      name: "MPU6886 Accel X"
+    accel_y:
+      name: "MPU6886 Accel Y"
+    accel_z:
+      name: "MPU6886 Accel z"
+    gyro_x:
+      name: "MPU6886 Gyro X"
+    gyro_y:
+      name: "MPU6886 Gyro Y"
+    gyro_z:
+      name: "MPU6886 Gyro z"
+    temperature:
+      name: "MPU6886 Temperature"
+
+  - platform: homeassistant
+    id: brightness
+    entity_id: input_number.m5stick_display_brightness
+    internal: true
+    on_value:
+      then:
+        lambda: |-
+          id(backlight).set_brightness(id(brightness).state/100.0);
+          id(backlight).update();
+
+  - platform: wifi_signal
+    name: ${friendly_name} WiFi Signal
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: ${friendly_name} Uptime
+    entity_category: diagnostic
+
+  - platform: axp192
+    address: 0x34
+    i2c_id: i2c_internal
+    id: backlight
+    battery_level:
+      name: ${friendly_name} Battery Level
+    brightness: 0.5
+
+text_sensor:
+  - platform: version
+    name: ${friendly_name} Firmware Version
+    id: esphome_version
+    entity_category: diagnostic
